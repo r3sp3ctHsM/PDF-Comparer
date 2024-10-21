@@ -5,20 +5,21 @@ from io import BytesIO
 from PIL import Image, ImageChops, ImageEnhance
 import numpy as np
 import time
+import difflib
+
+# Required libraries:
+# pip install pymupdf pillow numpy
 
 
 class PDFComparer:
 
-  def __init__(self,
-               old_documents_dir,
-               new_documents_dir,
-               output_dir,
-               quality=4.0):
+  def __init__(self, old_documents_dir, new_documents_dir, output_dir, quality=2.0, margin_offset=72):
     self.old_documents_dir = old_documents_dir
     self.new_documents_dir = new_documents_dir
     self.output_dir = output_dir
     self.zoom_x = quality
     self.zoom_y = quality
+    self.margin_offset = margin_offset # Y-coordinate offset for document border
 
     # Ensure output directory exists
     os.makedirs(self.output_dir, exist_ok=True)
@@ -57,15 +58,7 @@ class PDFComparer:
     img_rgba_data[img_data == 0] = (0, 0, 0, 0)
 
     img_rgba = Image.fromarray(img_rgba_data, mode="RGBA")
-    """
-    tint_color_rgba = tint_color + (255,)
-    for y in range(img.height):
-      for x in range(img.width):
-        if img.getpixel((x,y)) == 255:
-          img_rgba.putpixel((x,y), tint_color_rgba)
-        else:
-          img_rgba.putpixel((x,y), (0,0,0,0))
-    """
+
     return img_rgba
 
   def overlay_images(self, img1, img2, tint_color=(255, 0, 0), opacity=1):
@@ -91,6 +84,47 @@ class PDFComparer:
     pix = page.get_pixmap(matrix=mat)
     return pix
 
+  def extract_text(self, page):
+    words = page.get_text("words")
+    lines = {}
+    for word in words:
+      line_key = word[3]
+      if line_key not in lines:
+        lines[line_key] = []
+      lines[line_key].append({
+        "text": word[4],
+        "bbox": word[:4]
+      })
+    return lines
+
+  def compare_text(self, old_text_with_positions, new_text_with_positions):
+    word_diffs = []
+    for line_key in set(old_text_with_positions.keys()).union(new_text_with_positions.keys()):
+      old_line = old_text_with_positions.get(line_key, [])
+      new_line = new_text_with_positions.get(line_key, [])
+
+      old_text = [word["text"] for word in old_line]
+      new_text = [word["text"] for word in new_line]
+
+      diff = list(difflib.ndiff(old_text, new_text))
+
+      old_index = 0
+      new_index = 0
+      for word in diff:
+        if word.startswith("+ "):
+          if new_index < len(new_line):
+            word_diffs.append((word, new_line[new_index]["bbox"], "add"))
+          new_index += 1
+        elif word.startswith("- "):
+          if old_index < len(old_line):
+            word_diffs.append((word, old_line[old_index]["bbox"], "remove"))
+          old_index += 1
+        else:
+          old_index += 1
+          new_index += 1
+
+    return word_diffs
+  
   def compare_pdfs(self, old_file_path, new_file_path):
     old_doc = pymupdf.open(old_file_path)
     new_doc = pymupdf.open(new_file_path)
@@ -105,34 +139,62 @@ class PDFComparer:
       old_image = self.render_page_to_image(old_page)
       new_image = self.render_page_to_image(new_page)
 
-      old_image_pil = Image.frombytes("RGB",
-                                      [old_image.width, old_image.height],
-                                      old_image.samples)
-      new_image_pil = Image.frombytes("RGB",
-                                      [new_image.width, new_image.height],
-                                      new_image.samples)
+      old_image_pil = Image.frombytes("RGB", [old_image.width, old_image.height], old_image.samples)
+      new_image_pil = Image.frombytes("RGB", [new_image.width, new_image.height], new_image.samples)
 
-      combined_image = self.overlay_images(old_image_pil,
-                                           new_image_pil,
-                                           tint_color=(255, 0, 0),
-                                           opacity=0.5)
+      combined_image = self.overlay_images(old_image_pil, new_image_pil, tint_color=(240, 240, 0), opacity=0.4)
 
-      if combined_image is not None:
+      old_text_with_positions = self.extract_text(old_page)
+      new_text_with_positions = self.extract_text(new_page)
+      word_diffs = self.compare_text(old_text_with_positions, new_text_with_positions)
+
+      if combined_image is not None or word_diffs:
         differences_found = True
 
-        img_byte_array = BytesIO()
-        combined_image.save(img_byte_array, format="PNG")
-        img_byte_array.seek(0)
+        if combined_image is not None:
+          img_byte_array = BytesIO()
+          combined_image.save(img_byte_array, format="PNG")
+          img_byte_array.seek(0)
 
-        page = output_doc.new_page(width=old_image.width,
-                                   height=old_image.height)
+        page = output_doc.new_page(width=old_image.width, height=old_image.height)
+        if combined_image is not None:
+          page.insert_image(page.rect, stream=img_byte_array, keep_proportion=True)
 
-        page.insert_image(page.rect,
-                          stream=img_byte_array,
-                          keep_proportion=True)
+        if word_diffs:
+          font_size = 8 * self.zoom_y
+          offset = font_size * 2
+          current_x_position = {}
+          for word, bbox, change_type in word_diffs:
+            if word.startswith('+ '):
+              text_color = (0,0.8,0)
+              word_text = word[2:]
+            elif word.startswith('- '):
+              text_color = (0.9,0,0)
+              word_text = word[2:]
 
-        del combined_image
-        del img_byte_array
+            text_width = pymupdf.get_text_length(word_text, fontsize=font_size)
+
+            text_pos_x = float(bbox[0]) * self.zoom_x
+            text_pos_y = float(bbox[1]) * self.zoom_y
+
+            if text_pos_y in current_x_position:
+              last_x_position = current_x_position[text_pos_y]
+              if last_x_position + pymupdf.get_text_length(" ", fontsize=font_size) > text_pos_x:
+                arrow_text = " >"
+                arrow_width = pymupdf.get_text_length(arrow_text, fontsize=font_size)
+                arrow_rect = pymupdf.Rect(last_x_position, text_pos_y - font_size, last_x_position + arrow_width, text_pos_y + offset)
+                page.insert_textbox(arrow_rect, arrow_text, fontsize=font_size, color=(0,0,0))
+                text_pos_x = last_x_position + arrow_width + pymupdf.get_text_length(" ", fontsize=font_size)
+            
+            text_rect = pymupdf.Rect(text_pos_x, text_pos_y - font_size, text_pos_x + text_width, text_pos_y + offset)
+
+            if not text_rect.is_infinite and not text_rect.is_empty:
+              page.insert_textbox(text_rect, word_text, fontsize=font_size, color=text_color)
+              current_x_position[text_pos_y] = text_pos_x + text_width
+
+        if combined_image is not None:
+          del combined_image
+          del img_byte_array
 
     if differences_found:
       return output_doc
@@ -159,14 +221,10 @@ class PDFComparer:
       new_file_path = os.path.join(self.new_documents_dir, old_file)
 
       if not os.path.exists(new_file_path):
-        print(
-            f"New file corresponding to {old_file} not found in {self.new_documents_dir}"
-        )
+        print(f"New file corresponding to {old_file} not found in {self.new_documents_dir}")
         continue
 
-      print(
-          f"Comparing {old_file} with its new version ({index + 1}/{len(old_files)})..."
-      )
+      print(f"Comparing {old_file} with its new version ({index + 1}/{len(old_files)})...")
 
       start_time = time.time()
       output_doc = self.compare_pdfs(old_file_path, new_file_path)
@@ -194,6 +252,7 @@ if __name__ == "__main__":
   OLD_DOCUMENT_DIR = "./Old_Documents"
   NEW_DOCUMENT_DIR = "./New_Documents"
   OUTPUT_DIR = "./Output"
+  MARGIN_OFFSET = 72
 
-  comparer = PDFComparer(OLD_DOCUMENT_DIR, NEW_DOCUMENT_DIR, OUTPUT_DIR)
+  comparer = PDFComparer(OLD_DOCUMENT_DIR, NEW_DOCUMENT_DIR, OUTPUT_DIR, margin_offset=MARGIN_OFFSET)
   comparer.run_comparison()
