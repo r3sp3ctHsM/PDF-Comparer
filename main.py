@@ -3,18 +3,39 @@ import time
 import shutil
 from io import BytesIO
 import pymupdf
-from PIL import Image
-from text_extractor import extract_text
-from text_comparer import compare_text
-from image_utils import render_page_to_image, overlay_differences
+from text_comparer import TextComparer
+from image_utils import ImageUtils
+import gc
+from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+@contextmanager
+def open_pdf(file_path: str):
+  doc = pymupdf.open(file_path)
+  try:
+    yield doc
+  finally:
+    doc.close()
 
 class PDFComparer:
-  def __init__(self, old_documents_dir, new_documents_dir, output_dir, quality=2.0, font_size = 8):
+  def __init__(self, old_documents_dir, new_documents_dir, output_dir, quality=2.0, font_size = 8, batch_size=10):
+    """
+    Initialise PDFComparer with directories and quality settings.
+    :param old_documents_dir: Directory containing the old PDF documents.
+    :param new_documents_dir: Directory containing the new PDF documents.
+    :param output_dir: Directory to save the comparison results.
+    :param quality: Zoom factor for rendering images
+    :param font_size: Font size for text annotations"""
+    
     self.old_documents_dir = old_documents_dir
     self.new_documents_dir = new_documents_dir
     self.output_dir = output_dir
-    self.quality = quality # Zoom factore for scaling horizonatlly and vertically
+    self.quality = quality 
     self.font_size = font_size * quality # Scale font size with quality
+    self.batch_size = batch_size
+
+    self.image_utils = ImageUtils(quality)
+    self.text_comparer = TextComparer()
 
     # Ensure output directory exists
     os.makedirs(self.output_dir, exist_ok=True)
@@ -33,32 +54,19 @@ class PDFComparer:
         print(f'Failed to delete {file_path}. Reason: {e}')
 
   def get_pdf_files(self, directory):
+    """
+    Get a list of PDF files in the specified directory
+    :param directory: Directory to search for PDF files
+    :return: List of PDF file names"""
     return [f for f in os.listdir(directory) if f.endswith('.pdf')]
 
-  def render_pages_to_images(self, old_page, new_page):
-    """Render PDF pages to images."""
-    old_image = render_page_to_image(old_page, self.quality, self.quality)
-    new_image = render_page_to_image(new_page, self.quality, self.quality)
-    old_image_pil = Image.frombytes("RGB",[old_image.width, old_image.height], old_image.samples)
-    new_image_pil = Image.frombytes("RGB",[new_image.width, new_image.height], new_image.samples)
-    return old_image_pil, new_image_pil
-
-  def extract_and_compare_text(self, old_page, new_page):
-    """Extract and compare text from PDF pages."""
-    old_text_with_positions = extract_text(old_page)
-    new_text_with_positions = extract_text(new_page)
-    word_diffs = compare_text(old_text_with_positions, new_text_with_positions)
-    return word_diffs
-
-  def overlay_differences(self, old_image_pil, new_image_pil):
-    """Overlay differences between two images"""
-    return overlay_differences(old_image_pil, new_image_pil, tint_color=(170, 51, 106), opacity=0.5)
-
   def add_text_differences(self, page, word_diffs):
-    """Add word-level text differences to the PDF page"""
+    """Add word-level text differences to the PDF page
+    :param page: PDF page to annotate.
+    :param word_diffs: List of word-level differences with bounding boxes"""
     current_x_position = {} # Track current x position for each line to avoid overlap
 
-    for word, bbox, change_type in word_diffs:
+    for word, bbox in word_diffs:
       if word.startswith('+ '):
         text_color = (0, 0.8, 0) # Green for added words
         word_text = word[2:]
@@ -92,55 +100,84 @@ class PDFComparer:
         current_x_position[text_pos_y] = text_pos_x + text_width
 
   def compare_pdfs(self, old_file_path, new_file_path):
-    old_doc = pymupdf.open(old_file_path)
-    new_doc = pymupdf.open(new_file_path)
-    output_doc = pymupdf.open() #Create a new PDF for the output
+    """
+    Compare two PDF files and return a document with differences highlighted
+    :param old_file_path: Path to the old PDF file
+    :param new_file_path: Path to the new PDF file
+    :return: PDF document with differences highlighted"""
+    output_file_path = os.path.join(self.output_dir, f"diff_{os.path.basename(old_file_path)}")
+    start_time = time.time()
+    
+    with open_pdf(old_file_path) as old_doc, open_pdf(new_file_path) as new_doc:
+      output_doc = pymupdf.open() #Create a new PDF for the output
 
-    differences_found = False
+      differences_found = False
 
-    for page_num in range(min(len(old_doc), len(new_doc))):
-      old_page = old_doc.load_page(page_num)
-      new_page = new_doc.load_page(page_num)
+      for page_num in range(min(len(old_doc), len(new_doc))):
+        old_page = old_doc.load_page(page_num)
+        new_page = new_doc.load_page(page_num)
 
-      # Render pages to images
-      old_image_pil, new_image_pil = self.render_pages_to_images(old_page, new_page)
+        # Render pages to images
+        old_image_pil, new_image_pil = self.image_utils.render_pages_to_images(old_page, new_page)
 
-      # Overlay differences
-      combined_image = self.overlay_differences(old_image_pil, new_image_pil)
+        # Overlay differences
+        combined_image = self.image_utils.overlay_differences(old_image_pil, new_image_pil, tint_color=(170,51,106))
 
-      # Extract and compare text
-      word_diffs = self.extract_and_compare_text(old_page, new_page)
+        # Extract and compare text
+        word_diffs = self.text_comparer.extract_and_compare_text(old_page, new_page)
 
-      if combined_image is not None or word_diffs:
-        differences_found = True
+        if combined_image is not None or word_diffs:
+          differences_found = True
 
-        # Convert combined image to bytes in a supported format (PNG)
-        if combined_image is not None:
-          img_byte_array = BytesIO()
-          combined_image.save(img_byte_array, format='PNG')
-          img_byte_array.seek(0)
+          # Convert combined image to bytes in a supported format (PNG)
+          if combined_image is not None:
+            img_byte_array = BytesIO()
+            combined_image.save(img_byte_array, format='PNG')
+            img_byte_array.seek(0)
 
-        # Insert the combined image into the PDF page
-        page = output_doc.new_page(width=old_image_pil.width, height=old_image_pil.height)
-        if combined_image is not None:
-          page.insert_image(page.rect, stream=img_byte_array, keep_proportion=True)
+          # Insert the combined image into the PDF page
+          page = output_doc.new_page(width=old_image_pil.width, height=old_image_pil.height)
+          if combined_image is not None:
+            page.insert_image(page.rect, stream=img_byte_array, keep_proportion=True)
 
-        # Add word-level text differences to the output PDF
-        if word_diffs:
-          self.add_text_differences(page, word_diffs)
+          # Add word-level text differences to the output PDF
+          if word_diffs:
+            self.add_text_differences(page, word_diffs)
 
-        # Explicitly delete large objects to free memory
-        if combined_image is not None:
-          del combined_image
-          del img_byte_array
+          # Explicitly delete large objects to free memory
+          if combined_image is not None:
+            del combined_image
+            del img_byte_array
+          del old_image_pil
+          del new_image_pil
+
+          gc.collect()
 
     if differences_found:
-      return output_doc
+      output_doc.save(output_file_path)
+      output_doc.close()
+      end_time = time.time()
+      elapsed_time = end_time - start_time
+      return output_file_path, True, elapsed_time
     else:
       output_doc.close()
-      return None
+      end_time = time.time()
+      elapsed_time = end_time - start_time
+      return output_file_path, False, elapsed_time
 
+  def compare_batch(self, batch_pairs):
+    """Compare a batch of PDF files"""
+    batch_results = []
+    for old_file_path, new_file_path in batch_pairs:
+      if not os.path.exists(new_file_path):
+        print(f"New file corresponding to {old_file_path} not found in the new documents directory.")
+        continue
+      result = self.compare_pdfs(old_file_path, new_file_path)
+      batch_results.append(result)
+    return batch_results
+  
   def run_comparison(self):
+    """Run the comparison for all PDFs in the specified directories"""
     old_files = self.get_pdf_files(self.old_documents_dir)
     new_files = self.get_pdf_files(self.new_documents_dir)
 
@@ -152,27 +189,25 @@ class PDFComparer:
 
     total_start_time = time.time()
 
-    for index, old_file in enumerate(old_files):
-      old_file_path = os.path.join(self.old_documents_dir, old_file)
-      new_file_path = os.path.join(self.new_documents_dir, old_file)
+    def batch_files(files, batch_size):
+      """Helper function to batch files into groups"""
+      for i in range(0, len(files), batch_size):
+        yield files[i:i + batch_size]
+    
+    with ThreadPoolExecutor() as executor:
+      futures = []
+      for batch in batch_files(old_files, self.batch_size):
+        batch_pairs = [(os.path.join(self.old_documents_dir, file), os.path.join(self.new_documents_dir, file)) for file in batch]
+        futures.append(executor.submit(self.compare_batch, batch_pairs))
 
-      if not os.path.exists(new_file_path):
-        print(f"New file corresponding to {old_file} not found in the new documents directory.")
-
-      start_time = time.time()
-      output_doc = self.compare_pdfs(old_file_path, new_file_path)
-      end_time = time.time()
-      elapsed_time = end_time - start_time
-
-      if output_doc:
-        output_file_path = os.path.join(self.output_dir, f"diff_{old_file}")
-        output_doc.save(output_file_path)
-        output_doc.close()
-        print(f"Differences found: {output_file_path}")
-      else:
-        print(f"No differences found for {old_file}")
-
-      print(f"Time taken for {old_file}: {elapsed_time:.2f} seconds\n")
+      for future in as_completed(futures):
+        batch_results = future.result()
+        for output_file_path, differences_found, elapsed_time in batch_results:
+          if differences_found:
+            print(f"Differences found: {output_file_path}")
+          else:
+            print(f"No differences found for {output_file_path}")
+          print(f"Time taken for {output_file_path}: {elapsed_time:.2f} seconds\n")
 
     total_end_time = time.time()
     total_elapsed_time = total_end_time - total_start_time
@@ -185,6 +220,6 @@ if __name__ == "__main__":
   OUTPUT_DIR = "./Output"
   QUALITY = 2.0
   FONT_SIZE = 8
-
+  
   comparer = PDFComparer(OLD_DOCUMENT_DIR, NEW_DOCUMENT_DIR, OUTPUT_DIR, quality=QUALITY, font_size=FONT_SIZE)
   comparer.run_comparison()
