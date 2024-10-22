@@ -13,9 +13,8 @@ class PDFComparer:
     self.old_documents_dir = old_documents_dir
     self.new_documents_dir = new_documents_dir
     self.output_dir = output_dir
-    self.zoom_x = quality
-    self.zoom_y = quality
-    self.font_size = font_size * quality
+    self.quality = quality # Zoom factore for scaling horizonatlly and vertically
+    self.font_size = font_size * quality # Scale font size with quality
 
     # Ensure output directory exists
     os.makedirs(self.output_dir, exist_ok=True)
@@ -36,6 +35,62 @@ class PDFComparer:
   def get_pdf_files(self, directory):
     return [f for f in os.listdir(directory) if f.endswith('.pdf')]
 
+  def render_pages_to_images(self, old_page, new_page):
+    """Render PDF pages to images."""
+    old_image = render_page_to_image(old_page, self.quality, self.quality)
+    new_image = render_page_to_image(new_page, self.quality, self.quality)
+    old_image_pil = Image.frombytes("RGB",[old_image.width, old_image.height], old_image.samples)
+    new_image_pil = Image.frombytes("RGB",[new_image.width, new_image.height], new_image.samples)
+    return old_image_pil, new_image_pil
+
+  def extract_and_compare_text(self, old_page, new_page):
+    """Extract and compare text from PDF pages."""
+    old_text_with_positions = extract_text(old_page)
+    new_text_with_positions = extract_text(new_page)
+    word_diffs = compare_text(old_text_with_positions, new_text_with_positions)
+    return word_diffs
+
+  def overlay_differences(self, old_image_pil, new_image_pil):
+    """Overlay differences between two images"""
+    return overlay_differences(old_image_pil, new_image_pil, tint_color=(170, 51, 106), opacity=0.5)
+
+  def add_text_differences(self, page, word_diffs):
+    """Add word-level text differences to the PDF page"""
+    current_x_position = {} # Track current x position for each line to avoid overlap
+
+    for word, bbox, change_type in word_diffs:
+      if word.startswith('+ '):
+        text_color = (0, 0.8, 0) # Green for added words
+        word_text = word[2:]
+      elif word.startswith('- '):
+        text_color = (0.8, 0, 0) # Red for removed words
+        word_text = word[2:]
+
+      # Calculate the width of the word text using the default font
+      text_width = pymupdf.get_text_length(word_text, fontsize=self.font_size)
+
+      # Determine the position for the text box based on the bounding box coordinates
+      text_pos_x = float(bbox[0]) * self.quality
+      text_pos_y = float(bbox[1]) * self.quality
+
+      # Adjust text_pos_x to avoid overlap
+      if text_pos_y in current_x_position:
+        last_x_position = current_x_position[text_pos_y]
+        if last_x_position + pymupdf.get_text_length(" ", fontsize=self.font_size) > text_pos_x:
+          # Insert " >" symbol to indicate overlap
+          arrow_text = " >"
+          arrow_width = pymupdf.get_text_length(arrow_text, fontsize=self.font_size)
+          arrow_rect = pymupdf.Rect(last_x_position, text_pos_y - self.font_size, last_x_position + arrow_width, text_pos_y + (self.font_size * 2))
+          page.insert_textbox(arrow_rect, arrow_text, fontsize=self.font_size, color=(0,0,0))
+          # Adjust text position
+          text_pos_x = last_x_position + arrow_width + pymupdf.get_text_length(" ", fontsize=self.font_size)
+
+      text_rect = pymupdf.Rect(text_pos_x, text_pos_y - self.font_size, text_pos_x + text_width, text_pos_y + (self.font_size * 2))
+
+      if not text_rect.is_infinite and not text_rect.is_empty:
+        page.insert_textbox(text_rect, word_text, fontsize=self.font_size, color=text_color)
+        current_x_position[text_pos_y] = text_pos_x + text_width
+
   def compare_pdfs(self, old_file_path, new_file_path):
     old_doc = pymupdf.open(old_file_path)
     new_doc = pymupdf.open(new_file_path)
@@ -47,21 +102,14 @@ class PDFComparer:
       old_page = old_doc.load_page(page_num)
       new_page = new_doc.load_page(page_num)
 
-      # Render pages to images using the compatible method
-      old_image = render_page_to_image(old_page, self.zoom_x, self.zoom_y)
-      new_image = render_page_to_image(new_page, self.zoom_x, self.zoom_y)
+      # Render pages to images
+      old_image_pil, new_image_pil = self.render_pages_to_images(old_page, new_page)
 
-      # Convert rendered images directly to PIL format
-      old_image_pil = Image.frombytes("RGB", [old_image.width, old_image.height], old_image.samples)
-      new_image_pil = Image.frombytes("RGB", [new_image.width, new_image.height], new_image.samples)
+      # Overlay differences
+      combined_image = self.overlay_differences(old_image_pil, new_image_pil)
 
-      # Overlay only the differences from the new image onto the old image
-      combined_image = overlay_differences(old_image_pil, new_image_pil, tint_color=(170, 51, 106), opacity=0.5)
-
-      # Extract and compare text from both pages
-      old_text_with_positions = extract_text(old_page)
-      new_text_with_positions = extract_text(new_page)
-      word_diffs = compare_text(old_text_with_positions, new_text_with_positions)
+      # Extract and compare text
+      word_diffs = self.extract_and_compare_text(old_page, new_page)
 
       if combined_image is not None or word_diffs:
         differences_found = True
@@ -73,45 +121,13 @@ class PDFComparer:
           img_byte_array.seek(0)
 
         # Insert the combined image into the PDF page
-        page = output_doc.new_page(width=old_image.width, height=old_image.height)
+        page = output_doc.new_page(width=old_image_pil.width, height=old_image_pil.height)
         if combined_image is not None:
           page.insert_image(page.rect, stream=img_byte_array, keep_proportion=True)
 
-        # Add word-level text differences to the output PDF, aligning words with their bounding box positions
+        # Add word-level text differences to the output PDF
         if word_diffs:
-          current_x_position = {} # Track current x position for each line to avoid overlap
-          for word, bbox, change_type in word_diffs:
-            if word.startswith('+ '):
-              text_color = (0,0.8,0) # Green for added words
-              word_text = word[2:]
-            elif word.startswith('- '):
-              text_color = (0.8,0,0) # Red for removed words
-              word_text = word[2:]
-
-            # Calculate the width of the word text using the font object
-            text_width = pymupdf.get_text_length(word_text, fontsize=self.font_size)
-
-            # Determine the position for the text box based on the bounding box coordinates and margin offset
-            text_pos_x = float(bbox[0]) * self.zoom_x
-            text_pos_y = float(bbox[1]) * self.zoom_y
-
-            # Adjust text_pos_x to avoid overlap
-            if text_pos_y in current_x_position:
-              last_x_position = current_x_position[text_pos_y]
-              if last_x_position + pymupdf.get_text_length(" ", fontsize=self.font_size) > text_pos_x:
-                # Insert ">" symbol to indicate overlap
-                arrow_text = " >"
-                arrow_width = pymupdf.get_text_length(arrow_text, fontsize=self.font_size)
-                arrow_rect = pymupdf.Rect(last_x_position, text_pos_y - self.font_size, last_x_position + arrow_width, text_pos_y + self.font_size)
-                page.insert_textbox(arrow_rect, arrow_text, fontsize=self.font_size, color=(0,0,0))
-                # Adjust text position
-                text_pos_x = last_x_position + arrow_width + pymupdf.get_text_length(" ", fontsize=self.font_size)
-
-            text_rect = pymupdf.Rect(text_pos_x, text_pos_y - self.font_size, text_pos_x + text_width, text_pos_y + (self.font_size * 2))
-
-            if not text_rect.is_infinite and not text_rect.is_empty:
-              page.insert_textbox(text_rect, word_text, fontsize=self.font_size, color=text_color)
-              current_x_position[text_pos_y] = text_pos_x + text_width
+          self.add_text_differences(page, word_diffs)
 
         # Explicitly delete large objects to free memory
         if combined_image is not None:
@@ -130,11 +146,9 @@ class PDFComparer:
 
     if not old_files:
       print(f"No PDF files found in the old documents directory: {self.old_documents_dir}")
-      return
 
     if not new_files:
       print(f"No PDF files found in the new documents directory: {self.new_documents_dir}")
-      return
 
     total_start_time = time.time()
 
@@ -144,9 +158,6 @@ class PDFComparer:
 
       if not os.path.exists(new_file_path):
         print(f"New file corresponding to {old_file} not found in the new documents directory.")
-        continue
-
-      print(f"Comparing {old_file} with its new version ({index + 1}/{len(old_files)})...")
 
       start_time = time.time()
       output_doc = self.compare_pdfs(old_file_path, new_file_path)
@@ -157,20 +168,23 @@ class PDFComparer:
         output_file_path = os.path.join(self.output_dir, f"diff_{old_file}")
         output_doc.save(output_file_path)
         output_doc.close()
-        print(f"Differences found for {output_file_path}.")
+        print(f"Differences found: {output_file_path}")
       else:
-        print(f"No differences found for {old_file}.")
+        print(f"No differences found for {old_file}")
 
-      print(f"Time take for {old_file}: {elapsed_time:.2f} seconds\n")
+      print(f"Time taken for {old_file}: {elapsed_time:.2f} seconds\n")
 
     total_end_time = time.time()
     total_elapsed_time = total_end_time - total_start_time
-    print(f"Total time taken to compare {len(old_files) * 2} files: {total_elapsed_time:.2f} seconds")
+
+    print(f"Total time taken for comparing all documents: {total_elapsed_time:.2f} seconds")
 
 if __name__ == "__main__":
   OLD_DOCUMENT_DIR = "./Old_Documents"
   NEW_DOCUMENT_DIR = "./New_Documents"
   OUTPUT_DIR = "./Output"
+  QUALITY = 2.0
+  FONT_SIZE = 8
 
-  comparer = PDFComparer(OLD_DOCUMENT_DIR, NEW_DOCUMENT_DIR, OUTPUT_DIR, quality=2.0)
+  comparer = PDFComparer(OLD_DOCUMENT_DIR, NEW_DOCUMENT_DIR, OUTPUT_DIR, quality=QUALITY, font_size=FONT_SIZE)
   comparer.run_comparison()

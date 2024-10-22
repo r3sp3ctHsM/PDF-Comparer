@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.vim
     pkgs.libGLU
     pkgs.libGL
     pkgs.zlib
