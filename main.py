@@ -69,45 +69,13 @@ class PDFComparer:
     :param directory: Directory to search for PDF files
     :return: List of PDF file names"""
     return [f for f in os.listdir(directory) if f.endswith('.pdf')]
-
-  def add_text_differences(self, page, word_diffs):
-    """Add word-level text differences to the PDF page
-    :param page: PDF page to annotate.
-    :param word_diffs: List of word-level differences with bounding boxes"""
-    current_x_position = {} # Track current x position for each line to avoid overlap
-
-    for word, bbox in word_diffs:
-      if word.startswith('+ '):
-        text_color = (0, 0.8, 0) # Green for added words
-        word_text = word[2:]
-      elif word.startswith('- '):
-        text_color = (0.8, 0, 0) # Red for removed words
-        word_text = word[2:]
-
-      # Calculate the width of the word text using the default font
-      text_width = pymupdf.get_text_length(word_text, fontsize=self.font_size)
-
-      # Determine the position for the text box based on the bounding box coordinates
-      text_pos_x = float(bbox[0]) * self.quality
-      text_pos_y = float(bbox[1]) * self.quality
-
-      # Adjust text_pos_x to avoid overlap
-      if text_pos_y in current_x_position:
-        last_x_position = current_x_position[text_pos_y]
-        if last_x_position + pymupdf.get_text_length(" ", fontsize=self.font_size) > text_pos_x:
-          # Insert " >" symbol to indicate overlap
-          arrow_text = " >"
-          arrow_width = pymupdf.get_text_length(arrow_text, fontsize=self.font_size)
-          arrow_rect = pymupdf.Rect(last_x_position, text_pos_y - self.font_size, last_x_position + arrow_width, text_pos_y + (self.font_size * 2))
-          page.insert_textbox(arrow_rect, arrow_text, fontsize=self.font_size, color=(0,0,0))
-          # Adjust text position
-          text_pos_x = last_x_position + arrow_width + pymupdf.get_text_length(" ", fontsize=self.font_size)
-
-      text_rect = pymupdf.Rect(text_pos_x, text_pos_y - self.font_size, text_pos_x + text_width, text_pos_y + (self.font_size * 2))
-
-      if not text_rect.is_infinite and not text_rect.is_empty:
-        page.insert_textbox(text_rect, word_text, fontsize=self.font_size, color=text_color)
-        current_x_position[text_pos_y] = text_pos_x + text_width
+  
+  def save_page_image(self, image, output_dir, page_num):
+    """Save a page image to the specified output directory."""
+    if not os.path.exists(output_dir):
+      os.makedirs(output_dir)
+    image_file_path = os.path.join(output_dir, f"page_{page_num:02d}.jpg")
+    image.convert("RGB").save(image_file_path, "JPEG", quality=85)
 
   def compare_pdfs(self, old_file_path, new_file_path):
     """
@@ -115,11 +83,12 @@ class PDFComparer:
     :param old_file_path: Path to the old PDF file
     :param new_file_path: Path to the new PDF file
     :return: PDF document with differences highlighted"""
-    output_file_path = os.path.join(self.output_dir, f"diff_{os.path.basename(old_file_path)}")
+    base_name = os.path.splitext(os.path.basename(old_file_path))[0]
+    output_dir = os.path.join(self.output_dir, f"diff_{base_name}")
     start_time = time.time()
     
     with open_pdf(old_file_path) as old_doc, open_pdf(new_file_path) as new_doc:
-      output_doc = pymupdf.open() #Create a new PDF for the output
+      #output_doc = pymupdf.open() #Create a new PDF for the output
 
       differences_found = False
 
@@ -138,38 +107,27 @@ class PDFComparer:
 
         if combined_image is not None or word_diffs:
           differences_found = True
+          
+          # Annotate word-level text differences on the image
+          if word_diffs:
+            combined_image = combined_image.convert("RGBA")
+            self.image_utils.annotate_text_differences(combined_image, word_diffs, self.font_size)
 
           # Convert combined image to bytes in a supported format (PNG)
           if combined_image is not None:
-            combined_image = combined_image.convert('RGB')
-            img_byte_array = BytesIO()
-            combined_image.save(img_byte_array, format='JPEG', quality=85)
-            img_byte_array.seek(0)
-
-          # Insert the combined image into the PDF page
-          page = output_doc.new_page(width=old_image_pil.width, height=old_image_pil.height)
-          if combined_image is not None:
-            page.insert_image(page.rect, stream=img_byte_array, keep_proportion=True)
-
-          # Add word-level text differences to the output PDF
-          if word_diffs:
-            self.add_text_differences(page, word_diffs)
-
+            self.save_page_image(combined_image, output_dir, page_num)
+          
           # Explicitly delete large objects to free memory
           if combined_image is not None:
             del combined_image
-            del img_byte_array
           del old_image_pil
           del new_image_pil
 
           gc.collect()
 
-    if differences_found:
-      output_doc.save(output_file_path)
-    output_doc.close()
     end_time = time.time()
     elapsed_time = end_time - start_time
-    return output_file_path, False, elapsed_time
+    return output_dir, False, elapsed_time
 
   def compare_batch(self, batch_pairs):
     """Compare a batch of PDF files"""
