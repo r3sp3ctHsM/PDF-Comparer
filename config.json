@@ -1,0 +1,9 @@
+{
+    "old_documents_dir": "./Old_Documents",
+    "new_documents_dir": "./New_Documents",
+    "output_dir": "./Output",
+    "quality": 2.0,
+    "font_size": 8,
+    "batch_size": 4,
+    "core_count": null
+}

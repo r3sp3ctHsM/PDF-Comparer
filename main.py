@@ -1,6 +1,7 @@
 import os
 import time
 import shutil
+import json
 from io import BytesIO
 import pymupdf #PyMuPDF
 from text_comparer import TextComparer
@@ -8,6 +9,14 @@ from image_utils import ImageUtils
 import gc
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Load configuration from config.json
+with open('config.json', 'r') as config_file:
+  config = json.load(config_file)
+  
+# Set default core count if not specified by the user
+if config["core_count"] is None:
+  config["core_count"] = int(os.cpu_count() * 1.5)
 
 @contextmanager
 def open_pdf(file_path: str):
@@ -18,24 +27,22 @@ def open_pdf(file_path: str):
     doc.close()
 
 class PDFComparer:
-  def __init__(self, old_documents_dir, new_documents_dir, output_dir, quality=2.0, font_size = 8, batch_size=4, core_count=1):
+  def __init__(self,config):
     """
-    Initialise PDFComparer with directories and quality settings.
-    :param old_documents_dir: Directory containing the old PDF documents.
-    :param new_documents_dir: Directory containing the new PDF documents.
-    :param output_dir: Directory to save the comparison results.
-    :param quality: Zoom factor for rendering images
-    :param font_size: Font size for text annotations"""
+    Initialise PDFComparer with directories and quality settings from config.
     
-    self.old_documents_dir = old_documents_dir
-    self.new_documents_dir = new_documents_dir
-    self.output_dir = output_dir
-    self.quality = quality 
-    self.font_size = font_size * quality # Scale font size with quality
-    self.batch_size = batch_size
-    self.core_count = core_count
+    :param config: Configuration dictionary containing settings.
+    """
+    
+    self.old_documents_dir = config["old_documents_dir"]
+    self.new_documents_dir = config["new_documents_dir"]
+    self.output_dir = config["output_dir"]
+    self.quality = config["quality"]
+    self.font_size = config["font_size"] * self.quality # Scale font size with quality
+    self.batch_size = config["batch_size"]
+    self.core_count = config["core_count"]
 
-    self.image_utils = ImageUtils(quality)
+    self.image_utils = ImageUtils(self.quality)
     self.text_comparer = TextComparer()
 
     # Ensure output directory exists
@@ -216,12 +223,5 @@ class PDFComparer:
     print(f"Total time taken for comparing all documents: {total_elapsed_time:.2f} seconds")
 
 if __name__ == "__main__":
-  OLD_DOCUMENT_DIR = "./Old_Documents"
-  NEW_DOCUMENT_DIR = "./New_Documents"
-  OUTPUT_DIR = "./Output"
-  QUALITY = 2.0
-  FONT_SIZE = 8
-  CORE_COUNT = os.cpu_count() * 1.5
-  
-  comparer = PDFComparer(OLD_DOCUMENT_DIR, NEW_DOCUMENT_DIR, OUTPUT_DIR, quality=QUALITY, font_size=FONT_SIZE, core_count=CORE_COUNT)
+  comparer = PDFComparer(config)
   comparer.run_comparison()
