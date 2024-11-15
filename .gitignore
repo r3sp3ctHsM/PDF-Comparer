@@ -164,3 +164,11 @@ cython_debug/
 
 # Ignore PDF Files
 *.pdf
+
+# Replit
+.replit
+replit.nix
+
+# Poetry
+poetry.lock
+pyproject.toml
