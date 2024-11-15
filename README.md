@@ -29,30 +29,40 @@ The project requires the following Python libraries
 Follow these steps to set up the project on your local machine.
 
 ### Step 1: Clone the Repository
-```
-bash
+```bash
 git clone https://github.com/r3sp3ctHsM/Replit-Code.git
 cd pdf-comparison-tool
 ```
 
-### Step 2: Create a Virtual Environment (Optional but Recommended)
-```
-bash
+### Step 2: Create a Virtual Environment (Optional but recommended)
+```bash
 python3 -m venv myenv
-source /myenv/bin/activate
+```
+
+### Step 2.1: Activate the Virtual Environment
+- On Windows:
+```bash
+myenv\Scripts\activate
+```
+- On macOS and Linux:
+```bash
+source myenv/bin/activate
 ```
 
 ### Step 3: Install the Dependencies
-```
-bash
+- On Windows:
+```bash
 pip install -r requirements.txt
 ```
+- On macOS and Linux:
+```bash
+pip3 install -r requirements.txt
+```
 
-### Step 4: Verify the Installation
+### Step 5: Verify the Installation (Optional but recommended
 
 Ensure that the dependencies are installed correctly:
-```
-bash
+```bash
 pip list
 ```
 
@@ -62,8 +72,7 @@ The project uses a configuration file ('config.json') to manage settings such as
 
 ### Example 'config.json'
 
-json
-```
+```json
 {
     "old_documents_dir": "./Old_Documents",
     "new_documents_dir": ".New_Documents",
@@ -85,14 +94,22 @@ To run the PDF comparison tool, follow these steps:
 2. Update the 'config.json' file with the paths to your directories and desired settings.
 
 ### Example Usage
-```
-bash
+```bash
 python main.py
 ```
 
+## Output
+
+The results will be saved in the directory specified in 'output_dir' in the 'config.json' file. Each document will have its own directory containing images of pages with differences highlighted.
+
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request for any improvements or bug fixes.
+1. Fork the repository
+2. Create a new branch (`git checkout -b feature-branch`)
+3. Make your changes
+4. Commit your changes (`git commit -am 'Add new feature'`)
+5. Push to the branch (`git push origin feature-branch`)
+6. Create a new Pull Request
 
 ## License
 
