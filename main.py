@@ -52,6 +52,8 @@ class PDFComparer:
   def clear_output_folder(self):
     """Clear the output folder at the start of the script."""
     for filename in os.listdir(self.output_dir):
+      if filename == '.gitkeep':
+        continue
       file_path = os.path.join(self.output_dir, filename)
       try:
         if os.path.isfile(file_path) or os.path.islink(file_path):
