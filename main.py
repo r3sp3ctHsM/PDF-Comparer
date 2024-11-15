@@ -2,7 +2,7 @@ import os
 import time
 import shutil
 from io import BytesIO
-import pymupdf
+import pymupdf #PyMuPDF
 from text_comparer import TextComparer
 from image_utils import ImageUtils
 import gc
@@ -18,7 +18,7 @@ def open_pdf(file_path: str):
     doc.close()
 
 class PDFComparer:
-  def __init__(self, old_documents_dir, new_documents_dir, output_dir, quality=2.0, font_size = 8, batch_size=10):
+  def __init__(self, old_documents_dir, new_documents_dir, output_dir, quality=2.0, font_size = 8, batch_size=4, core_count=1):
     """
     Initialise PDFComparer with directories and quality settings.
     :param old_documents_dir: Directory containing the old PDF documents.
@@ -33,6 +33,7 @@ class PDFComparer:
     self.quality = quality 
     self.font_size = font_size * quality # Scale font size with quality
     self.batch_size = batch_size
+    self.core_count = core_count
 
     self.image_utils = ImageUtils(quality)
     self.text_comparer = TextComparer()
@@ -194,7 +195,7 @@ class PDFComparer:
       for i in range(0, len(files), batch_size):
         yield files[i:i + batch_size]
     
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=self.core_count) as executor:
       futures = []
       for batch in batch_files(old_files, self.batch_size):
         batch_pairs = [(os.path.join(self.old_documents_dir, file), os.path.join(self.new_documents_dir, file)) for file in batch]
@@ -207,7 +208,7 @@ class PDFComparer:
             print(f"Differences found: {output_file_path}")
           else:
             print(f"No differences found for {output_file_path}")
-          print(f"Time taken for {output_file_path}: {elapsed_time:.2f} seconds\n")
+          print(f"Time taken for {output_file_path}: {((elapsed_time/self.core_count)*self.batch_size):.2f} seconds\n")
 
     total_end_time = time.time()
     total_elapsed_time = total_end_time - total_start_time
@@ -220,6 +221,7 @@ if __name__ == "__main__":
   OUTPUT_DIR = "./Output"
   QUALITY = 2.0
   FONT_SIZE = 8
+  CORE_COUNT = os.cpu_count() * 1.5
   
-  comparer = PDFComparer(OLD_DOCUMENT_DIR, NEW_DOCUMENT_DIR, OUTPUT_DIR, quality=QUALITY, font_size=FONT_SIZE)
+  comparer = PDFComparer(OLD_DOCUMENT_DIR, NEW_DOCUMENT_DIR, OUTPUT_DIR, quality=QUALITY, font_size=FONT_SIZE, core_count=CORE_COUNT)
   comparer.run_comparison()
