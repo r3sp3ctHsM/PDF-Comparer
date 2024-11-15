@@ -30,8 +30,8 @@ Follow these steps to set up the project on your local machine.
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/r3sp3ctHsM/Replit-Code.git
-cd pdf-comparison-tool
+git clone https://github.com/r3sp3ctHsM/PDF-Comparer.git
+cd PDF-Comparer
 ```
 
 ### Step 2: Create a Virtual Environment (Optional but recommended)
@@ -59,7 +59,7 @@ pip install -r requirements.txt
 pip3 install -r requirements.txt
 ```
 
-### Step 5: Verify the Installation (Optional but recommended
+### Step 5: Verify the Installation (Optional but recommended)
 
 Ensure that the dependencies are installed correctly:
 ```bash
@@ -95,7 +95,7 @@ To run the PDF comparison tool, follow these steps:
 
 ### Example Usage
 ```bash
-python main.py
+python pdfcomparer.py
 ```
 
 ## Output
