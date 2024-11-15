@@ -165,6 +165,9 @@ cython_debug/
 # Ignore PDF Files
 *.pdf
 
+# Ignore JPEG files
+*.jpg
+
 # Replit
 .replit
 replit.nix

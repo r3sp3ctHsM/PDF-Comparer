@@ -1,5 +1,5 @@
 import pymupdf
-from PIL import Image, ImageChops, ImageEnhance
+from PIL import Image, ImageDraw, ImageFont, ImageChops, ImageEnhance
 import numpy as np
 
 class ImageUtils:
@@ -71,3 +71,31 @@ class ImageUtils:
     old_image = self.render_page_to_image(old_page)
     new_image = self.render_page_to_image(new_page)
     return old_image, new_image
+  
+  def annotate_text_differences(self, image, word_diffs, font_size):
+    """Annotate word-level text differences on an image"""
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.truetype("Arial.ttf", int(font_size))
+    current_x_position = {}
+    
+    for word, bbox in word_diffs:
+      if word.startswith('+ '):
+        text_color = (0, 204, 0)
+        word_text = word[2:]
+      elif word.startswith('- '):
+        text_color = (204, 0, 0)
+        word_text = word[2:]
+        
+      text_pos_x = float(bbox[0]) * self.quality
+      text_pos_y = float(bbox[1]) * self.quality
+      
+      if text_pos_y in current_x_position:
+        last_x_position = current_x_position[text_pos_y]
+        if last_x_position + font.getbbox(" ")[2] > text_pos_x:
+          arrow_text = " >"
+          arrow_width = font.getbbox(arrow_text)[2]
+          draw.text((last_x_position, text_pos_y), arrow_text, font=font, fill=(0,0,0))
+          text_pos_x = last_x_position + arrow_width + font.getbbox(" ")[2]
+          
+      draw.text((text_pos_x, text_pos_y - font_size), word_text, font=font, fill=text_color)
+      current_x_position[text_pos_y] = text_pos_x + font.getbbox(word_text)[2]
