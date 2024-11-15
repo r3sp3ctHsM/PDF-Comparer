@@ -11,7 +11,8 @@ class ImageUtils:
     """Render the page at a higher resolution using the zoom factor."""
     mat = pymupdf.Matrix(self.quality, self.quality)
     pix = page.get_pixmap(matrix=mat)
-    return pix
+    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    return img
 
   def create_binary_diff_image(self, img1, img2):
     """Create a binary difference image where differences are white and no differences are black."""
@@ -32,9 +33,11 @@ class ImageUtils:
     img_data = np.array(img)
 
     # Create a mask where white pixels in the binary image are set to the tint color and black pixels are transparent
+    mask = img_data == 255
+    
     img_rgba_data = np.zeros((img_data.shape[0], img_data.shape[1], 4), dtype=np.uint8)
-    img_rgba_data[img_data == 255] = tint_color + (255,)
-    img_rgba_data[img_data == 0] = (0, 0, 0, 0)
+    img_rgba_data[mask] = tint_color + (255,)
+    img_rgba_data[~mask] = (0, 0, 0, 0)
 
     # Convert the numpy array back to an image
     img_rgba = Image.fromarray(img_rgba_data, mode="RGBA")
@@ -67,6 +70,4 @@ class ImageUtils:
     """Render PDF pages to images."""
     old_image = self.render_page_to_image(old_page)
     new_image = self.render_page_to_image(new_page)
-    old_image_pil = Image.frombytes("RGB",[old_image.width, old_image.height], old_image.samples)
-    new_image_pil = Image.frombytes("RGB",[new_image.width, new_image.height], new_image.samples)
-    return old_image_pil, new_image_pil
+    return old_image, new_image

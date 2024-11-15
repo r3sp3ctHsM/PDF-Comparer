@@ -36,9 +36,7 @@ class TextComparer:
 
   def collect_text_with_positions(self, text_with_positions):
     """Collect all words with positions from the given text with positions"""
-    text_list = []
-    for line in text_with_positions.values():
-      text_list.extend(line)
+    text_list = [word for line in text_with_positions.values() for word in line]
     return text_list
   
   def extract_and_compare_text(self, old_page, new_page):

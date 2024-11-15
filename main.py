@@ -141,8 +141,9 @@ class PDFComparer:
 
           # Convert combined image to bytes in a supported format (PNG)
           if combined_image is not None:
+            combined_image = combined_image.convert('RGB')
             img_byte_array = BytesIO()
-            combined_image.save(img_byte_array, format='PNG')
+            combined_image.save(img_byte_array, format='JPEG', quality=85)
             img_byte_array.seek(0)
 
           # Insert the combined image into the PDF page
@@ -165,15 +166,10 @@ class PDFComparer:
 
     if differences_found:
       output_doc.save(output_file_path)
-      output_doc.close()
-      end_time = time.time()
-      elapsed_time = end_time - start_time
-      return output_file_path, True, elapsed_time
-    else:
-      output_doc.close()
-      end_time = time.time()
-      elapsed_time = end_time - start_time
-      return output_file_path, False, elapsed_time
+    output_doc.close()
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    return output_file_path, False, elapsed_time
 
   def compare_batch(self, batch_pairs):
     """Compare a batch of PDF files"""
