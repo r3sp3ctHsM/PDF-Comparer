@@ -174,3 +174,9 @@ The results will be saved in the directory specified in 'output_dir' in the 'con
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+- This project uses [PyMuPDF](https://pymupdf.readthedocs.io/) for PDF processing.
+- This project uses [Pillow](https://python-pillow.org/) for image processing.
+- This project uses [NumPy](https://numpy.org/) for numerical operations.
+- Thanks to all the contributors and open-source projects that made this tool possible.
