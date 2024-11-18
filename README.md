@@ -63,7 +63,7 @@ pip3 list
 The project uses a configuration file ('config.json') to manage settings such as directories, quality, font size, batch size, and core count. You can customize these settings by editing the 'config.json' file.
 
 1. Edit the 'config.json' file to specify your directories and settings:
-
+(If copying below, remove comments otherwise code will not run)
 ```json
 {
     "old_documents_dir": "./Old_Documents", # Set a to user-owned directory
