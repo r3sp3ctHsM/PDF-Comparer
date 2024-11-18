@@ -75,6 +75,7 @@ The project uses a configuration file ('config.json') to manage settings such as
     "core_count": null # Set this to null to use the default calculation (1.5 times the number of CPU cores)
 }
 ```
+If 'core_count' is set to 'null', the script will automatically use `os.cpu_count() * 1.5` to determine the number of cores.
 
 ### Examples of User-Owned Directories:
 
@@ -95,8 +96,6 @@ The project uses a configuration file ('config.json') to manage settings such as
     - `/home/YourUsername/Documents`
     - `/home/YourUsername/Desktop`
     - `/home/YourUsername/Downloads`
-
-If 'core_count' is set to 'null', the script will automatically use 'os.cpu_count() * 1.5' to determine the number of cores.
 
 # Usage
 
