@@ -1,11 +1,11 @@
 # PDF Comparison Tool
 
-This project is a PDF comparison tool that highlights differenes between PDF documents. It uses 'PyMuPDF' for PDF handling, 'Pillow' for image processing, 'numpy' for numerical operations. This tool saves the results as images grouped by document.
+This project is a PDF comparison tool that highlights differenes between PDF documents primarily for use with bulk PDF comparisons. It uses 'PyMuPDF' for PDF handling, 'Pillow' for image processing, 'numpy' for numerical operations. This tool saves the results as images grouped by document.
 
 <ins> **Administrator rights are not required for this script.** </ins>
 
 ## Features
-- Compare two folders PDF documents and highlight differences (Names must match).
+- Compare two folders of PDF documents and highlight differences (names must match).
 - Multithreading and Batch processing to handle large batches of PDF files efficiently.
 - Image processing to overlay differences.
 - Text comparison to identify word-level differences
