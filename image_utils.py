@@ -1,4 +1,4 @@
-# My Project
+# PDF Comparer
 # Copyright (C) 2024 Ryan Lacadin
 #
 # This program is free software: you can redistribute it and/or modify
