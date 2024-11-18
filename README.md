@@ -19,7 +19,7 @@ This project is a PDF comparison tool that highlights differenes between PDF doc
 The project requires the following Python libraries
 - PyMuPDF
 - Pillow
-   numpy
+- numpy
 
 ## Installation
 
