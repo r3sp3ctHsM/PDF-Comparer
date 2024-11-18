@@ -173,7 +173,15 @@ The results will be saved in the directory specified in 'output_dir' in the 'con
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU Affero General Public License (AGPL) version 3. You can redistribute it and/or modify it under the terms of the AGPL as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+## Source Code Availability
+
+The source code for this project is available at <https://github.com/r3sp3ctHsM/PDF-Comparer>.
 
 ## Acknowledgments
 - This project uses [PyMuPDF](https://pymupdf.readthedocs.io/) for PDF processing.
