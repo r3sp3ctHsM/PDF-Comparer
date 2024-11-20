@@ -110,7 +110,7 @@ class ImageUtils:
         if last_x_position + font.getbbox(" ")[2] > text_pos_x:
           arrow_text = " >"
           arrow_width = font.getbbox(arrow_text)[2]
-          draw.text((last_x_position, text_pos_y), arrow_text, font=font, fill=(0,0,0))
+          draw.text((last_x_position, text_pos_y - font_size), arrow_text, font=font, fill=(0,0,0))
           text_pos_x = last_x_position + arrow_width + font.getbbox(" ")[2]
           
       draw.text((text_pos_x, text_pos_y - font_size), word_text, font=font, fill=text_color)

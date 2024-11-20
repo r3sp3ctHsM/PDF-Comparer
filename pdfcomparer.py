@@ -102,64 +102,81 @@ class PDFComparer:
     Compare two PDF files and return a document with differences highlighted
     :param old_file_path: Path to the old PDF file
     :param new_file_path: Path to the new PDF file
-    :return: PDF document with differences highlighted"""
+    """
     base_name = os.path.splitext(os.path.basename(old_file_path))[0]
     output_dir = os.path.join(self.output_dir, f"diff_{base_name}")
     start_time = time.time()
-    
+
     with open_pdf(old_file_path) as old_doc, open_pdf(new_file_path) as new_doc:
-      #output_doc = pymupdf.open() #Create a new PDF for the output
+        differences_found = False
 
-      differences_found = False
+        for page_num in range(min(len(old_doc), len(new_doc))):
+            old_page = old_doc.load_page(page_num)
+            new_page = new_doc.load_page(page_num)
 
-      for page_num in range(min(len(old_doc), len(new_doc))):
-        old_page = old_doc.load_page(page_num)
-        new_page = new_doc.load_page(page_num)
+            # Render pages to images
+            old_image_pil, new_image_pil = self.image_utils.render_pages_to_images(old_page, new_page)
 
-        # Render pages to images
-        old_image_pil, new_image_pil = self.image_utils.render_pages_to_images(old_page, new_page)
+            # Overlay differences (image-level differences)
+            overlay_image = self.image_utils.overlay_differences(
+                old_image_pil, new_image_pil, tint_color=(170, 51, 106)
+            )
 
-        # Overlay differences
-        combined_image = self.image_utils.overlay_differences(old_image_pil, new_image_pil, tint_color=(170,51,106))
+            # Extract and compare text (word-level differences)
+            word_diffs = self.text_comparer.extract_and_compare_text(old_page, new_page)
 
-        # Extract and compare text
-        word_diffs = self.text_comparer.extract_and_compare_text(old_page, new_page)
+            # Combined image: Overlay + Annotated text differences
+            combined_image = None
+            if overlay_image or word_diffs:
+                differences_found = True
+                if overlay_image:
+                    combined_image = overlay_image.convert("RGBA")
 
-        if combined_image is not None or word_diffs:
-          differences_found = True
-          
-          # Annotate word-level text differences on the image
-          if word_diffs:
-            combined_image = combined_image.convert("RGBA")
-            self.image_utils.annotate_text_differences(combined_image, word_diffs, self.font_size)
+                if word_diffs:
+                    if combined_image is None:
+                        combined_image = old_image_pil.convert("RGBA")
+                    self.image_utils.annotate_text_differences(
+                        combined_image, word_diffs, self.font_size
+                    )
 
-          # Convert combined image to bytes in a supported format (PNG)
-          if combined_image is not None:
-            self.save_page_image(combined_image, output_dir, page_num)
-          
-          # Explicitly delete large objects to free memory
-          if combined_image is not None:
-            del combined_image
-          del old_image_pil
-          del new_image_pil
+            # Save the outputs
+            if overlay_image:
+                overlay_output_dir = os.path.join(output_dir, "overlay_differences")
+                self.save_page_image(overlay_image, overlay_output_dir, page_num)
+            
+            if combined_image:
+                combined_output_dir = os.path.join(output_dir, "combined_differences")
+                self.save_page_image(combined_image, combined_output_dir, page_num)
 
-          gc.collect()
+            if word_diffs:
+                word_diff_output_dir = os.path.join(output_dir, "word_differences")
+                word_diff_image = old_image_pil.convert("RGBA")
+                self.image_utils.annotate_text_differences(
+                    word_diff_image, word_diffs, self.font_size
+                )
+                self.save_page_image(word_diff_image, word_diff_output_dir, page_num)
+
+            # Cleanup to free memory
+            if overlay_image:
+                del overlay_image
+            if combined_image:
+                del combined_image
+            del old_image_pil, new_image_pil
+            gc.collect()
 
     end_time = time.time()
-    elapsed_time = end_time - start_time  
-    
-    with self.lock:
-      if differences_found:
-        print(f"Differences found: {output_dir}")
-      else:
-        print(f"No differences found for {output_dir}")
+    elapsed_time = end_time - start_time
 
-      print(f"Time taken for {output_dir}: {elapsed_time:.2f} seconds")
-    
-      self.completed_comparisons += 1
-      print(f"Progress: {self.completed_comparisons}/{self.total_comparisons} comparisons completed\n")
-    
-    return False
+    with self.lock:
+        if differences_found:
+            print(f"Differences found: {output_dir}")
+        else:
+            print(f"No differences found for {output_dir}")
+
+        print(f"Time taken for {output_dir}: {elapsed_time:.2f} seconds")
+
+        self.completed_comparisons += 1
+        print(f"Progress: {self.completed_comparisons}/{self.total_comparisons} comparisons completed\n")
   
   def run_comparison(self):
     """Run the comparison for all PDFs in the specified directories"""
