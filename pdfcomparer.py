@@ -25,6 +25,7 @@ from image_utils import ImageUtils
 import gc
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 
 # Load configuration from config.json
 with open('config.json', 'r') as config_file:
@@ -64,6 +65,9 @@ class PDFComparer:
     # Ensure output directory exists
     os.makedirs(self.output_dir, exist_ok=True)
     self.clear_output_folder()
+    
+    self.completed_comparisons = 0
+    self.lock = Lock()
 
   def clear_output_folder(self):
     """Clear the output folder at the start of the script."""
@@ -142,8 +146,22 @@ class PDFComparer:
           gc.collect()
 
     end_time = time.time()
-    elapsed_time = end_time - start_time
-    return output_dir, False, elapsed_time
+    elapsed_time = end_time - start_time  
+    
+    if differences_found:
+      print(f"Differences found: {output_dir}")
+    else:
+      print(f"No differences found for {output_dir}")
+
+    #print(f"Time taken for {output_dir}: {elapsed_time:.2f} seconds\n")
+
+    print(f"Time taken for {output_dir}: {((elapsed_time/self.core_count)*self.batch_size):.2f} seconds")
+    
+    with self.lock:
+      self.completed_comparisons += 1
+      print(f"Progress: {self.completed_comparisons}/{self.total_comparisons} comparisons completed\n")
+    
+    return False
 
   def compare_batch(self, batch_pairs):
     """Compare a batch of PDF files"""
@@ -158,6 +176,9 @@ class PDFComparer:
   
   def run_comparison(self):
     """Run the comparison for all PDFs in the specified directories"""
+    
+    print("Starting PDF Comparison tool now")
+    
     old_files = self.get_pdf_files(self.old_documents_dir)
     new_files = self.get_pdf_files(self.new_documents_dir)
 
@@ -174,6 +195,8 @@ class PDFComparer:
       for i in range(0, len(files), batch_size):
         yield files[i:i + batch_size]
     
+    self.total_comparisons = len(old_files)
+    
     with ThreadPoolExecutor(max_workers=self.core_count) as executor:
       futures = []
       for batch in batch_files(old_files, self.batch_size):
@@ -181,13 +204,7 @@ class PDFComparer:
         futures.append(executor.submit(self.compare_batch, batch_pairs))
 
       for future in as_completed(futures):
-        batch_results = future.result()
-        for output_file_path, differences_found, elapsed_time in batch_results:
-          if differences_found:
-            print(f"Differences found: {output_file_path}")
-          else:
-            print(f"No differences found for {output_file_path}")
-          print(f"Time taken for {output_file_path}: {((elapsed_time/self.core_count)*self.batch_size):.2f} seconds\n")
+        future.result()
 
     total_end_time = time.time()
     total_elapsed_time = total_end_time - total_start_time
