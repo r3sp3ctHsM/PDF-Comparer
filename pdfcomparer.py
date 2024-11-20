@@ -56,7 +56,6 @@ class PDFComparer:
     self.output_dir = config["output_dir"]
     self.quality = config["quality"]
     self.font_size = config["font_size"] * self.quality # Scale font size with quality
-    self.batch_size = config["batch_size"]
     self.core_count = config["core_count"]
 
     self.image_utils = ImageUtils(self.quality)
