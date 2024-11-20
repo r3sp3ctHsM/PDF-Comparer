@@ -15,15 +15,18 @@ This project is a PDF comparison tool that highlights differenes between PDF doc
 - pip3 (should be included with Python installs from Python 3.4 onwards)
 
 ## Dependencies
+<details>
+<summary>The project requires the following Python libraries</summary>
 
-The project requires the following Python libraries
 - PyMuPDF
 - Pillow
 - numpy
 
-## Installation
+</details>
 
-Follow these steps to set up the project on your local machine.
+# Installation
+<details>
+<summary>Follow these steps to set up the project on your local machine.</summary>
 
 ### Step 1: Clone the Repository (this will create a folder name 'PDF-Comparer' in your current directory)
 ```bash
@@ -57,10 +60,13 @@ Ensure that the dependencies are installed correctly:
 ```bash
 pip3 list
 ```
+</details>
 
-## Configuration
+# Configuration
 
-The project uses a configuration file ('config.json') to manage settings such as directories, quality, font size, batch size, and core count. You can customize these settings by editing the 'config.json' file.
+The project uses a configuration file ('config.json') to manage settings such as directories, quality, font size, batch size, and core count. 
+<details>
+<summary>You can customize these settings by editing the 'config.json' file.</summary>
 
 1. Edit the 'config.json' file to specify your directories and settings:
 (If copying below, remove comments otherwise code will not run)
@@ -79,23 +85,35 @@ If 'core_count' is set to 'null', the script will automatically use `os.cpu_coun
 
 ### Examples of User-Owned Directories:
 
-- **Windows**:
-    - `C:\Users\YourUsername`
-    - `C:\Users\YourUsername\Documents`
-    - `C:\Users\YourUsername\Desktop`
-    - `C:\Users\YourUsername\Downloads`
+<details>
+<summary>Windows:</summary>
 
-- **macOS**:
-    - `/Users/YourUsername`
-    - `/Users/YourUsername/Documents`
-    - `/Users/YourUsername/Desktop`
-    - `/Users/YourUsername/Downloads`
+- `C:\Users\YourUsername`
+- `C:\Users\YourUsername\Documents`
+- `C:\Users\YourUsername\Desktop`
+- `C:\Users\YourUsername\Downloads`
 
-- **Linux**:
-    - `/home/YourUsername`
-    - `/home/YourUsername/Documents`
-    - `/home/YourUsername/Desktop`
-    - `/home/YourUsername/Downloads`
+</details>
+<details>
+<summary>macOS:</summary>
+
+- `/Users/YourUsername`
+- `/Users/YourUsername/Documents`
+- `/Users/YourUsername/Desktop`
+- `/Users/YourUsername/Downloads`
+
+</details>
+<details>
+<summary>Linux:</summary>
+
+- `/home/YourUsername`
+- `/home/YourUsername/Documents`
+- `/home/YourUsername/Desktop`
+- `/home/YourUsername/Downloads`
+
+</details>
+
+</details>
 
 # Usage
 
