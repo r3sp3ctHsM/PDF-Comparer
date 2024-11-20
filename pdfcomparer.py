@@ -33,7 +33,7 @@ with open('config.json', 'r') as config_file:
   
 # Set default core count if not specified by the user
 if config["core_count"] is None:
-  config["core_count"] = int(os.cpu_count() * 1.5)
+  config["core_count"] = int(os.cpu_count())
 
 @contextmanager
 def open_pdf(file_path: str):
@@ -148,31 +148,18 @@ class PDFComparer:
     end_time = time.time()
     elapsed_time = end_time - start_time  
     
-    if differences_found:
-      print(f"Differences found: {output_dir}")
-    else:
-      print(f"No differences found for {output_dir}")
-
-    #print(f"Time taken for {output_dir}: {elapsed_time:.2f} seconds\n")
-
-    print(f"Time taken for {output_dir}: {((elapsed_time/self.core_count)*self.batch_size):.2f} seconds")
-    
     with self.lock:
+      if differences_found:
+        print(f"Differences found: {output_dir}")
+      else:
+        print(f"No differences found for {output_dir}")
+
+      print(f"Time taken for {output_dir}: {elapsed_time:.2f} seconds")
+    
       self.completed_comparisons += 1
       print(f"Progress: {self.completed_comparisons}/{self.total_comparisons} comparisons completed\n")
     
     return False
-
-  def compare_batch(self, batch_pairs):
-    """Compare a batch of PDF files"""
-    batch_results = []
-    for old_file_path, new_file_path in batch_pairs:
-      if not os.path.exists(new_file_path):
-        print(f"New file corresponding to {old_file_path} not found in the new documents directory.")
-        continue
-      result = self.compare_pdfs(old_file_path, new_file_path)
-      batch_results.append(result)
-    return batch_results
   
   def run_comparison(self):
     """Run the comparison for all PDFs in the specified directories"""
@@ -189,19 +176,15 @@ class PDFComparer:
       print(f"No PDF files found in the new documents directory: {self.new_documents_dir}")
 
     total_start_time = time.time()
-
-    def batch_files(files, batch_size):
-      """Helper function to batch files into groups"""
-      for i in range(0, len(files), batch_size):
-        yield files[i:i + batch_size]
     
     self.total_comparisons = len(old_files)
     
     with ThreadPoolExecutor(max_workers=self.core_count) as executor:
       futures = []
-      for batch in batch_files(old_files, self.batch_size):
-        batch_pairs = [(os.path.join(self.old_documents_dir, file), os.path.join(self.new_documents_dir, file)) for file in batch]
-        futures.append(executor.submit(self.compare_batch, batch_pairs))
+      for old_file in old_files:
+        old_file_path = os.path.join(self.old_documents_dir, old_file)
+        new_file_path = os.path.join(self.new_documents_dir, old_file)
+        futures.append(executor.submit(self.compare_pdfs, old_file_path, new_file_path))
 
       for future in as_completed(futures):
         future.result()
@@ -210,6 +193,7 @@ class PDFComparer:
     total_elapsed_time = total_end_time - total_start_time
 
     print(f"Total time taken for comparing all documents: {total_elapsed_time:.2f} seconds")
+    print(f"Average time taken per file: {total_elapsed_time/self.total_comparisons:.2f} seconds")
 
 if __name__ == "__main__":
   comparer = PDFComparer(config)
