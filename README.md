@@ -156,6 +156,10 @@ python3 pdfcomparer.py
 
 The results will be saved in the directory specified in 'output_dir' in the 'config.json' file. Each document will have its own directory containing images of pages with differences highlighted.
 
+Format (overlay) differences will be shown by $\color{#aa336b}{\textsf{Pink Highlighting}}$
+
+Text differences will be shown by $\color{rgb(0,206,0)}{\textsf{Added Words}}$ or $\color{rgb(206,0,0)}{\textsf{Removed Words}}$
+
 ## Additional Notes
 
 - **Updating Dependencies**: To update deendencies, you can run `pip3 install --upgrade -r requirements.txt`.
