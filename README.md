@@ -149,7 +149,7 @@ cd PDF-Comparer
 
 ### 5. Run the PDF comparison tool:
 ```bash
-python pdfcomparer.py
+python3 pdfcomparer.py
 ```
 
 ## Output
